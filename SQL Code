@@ -1,0 +1,623 @@
+------------------------------------------------------------------------------------CREATE TABLES----------
+/*
+CREATE TABLE Customer
+(CustomerID bigint IDENTITY(1,1) PRIMARY KEY,
+FirstName varchar(10) NOT NULL,
+LastName varchar(10) NOT NULL,
+HomeAddress varchar(100) NOT NULL,
+Email varchar(50) NOT NULL,
+ContactNumber varchar(20) NOT NULL
+)
+
+Create Table OrderPlaced
+(
+	OrderId bigint IDENTITY(1,1) PRIMARY KEY,
+	PlacedAt time,
+	PlacedOn date Default GETDATE(),
+	Discount int default 0,
+	Total money Default 0,
+)
+
+ALTER TABLE OrderPlaced
+ADD CONSTRAINT df_time
+DEFAULT convert(varchar(10), GETDATE(), 108) FOR PlacedAt;
+
+CREATE TABLE Products 
+(ProductID bigint IDENTITY(1,1) PRIMARY KEY,
+Item VARCHAR(20) NOT NULL,
+Price MONEY NOT NULL)
+
+CREATE TABLE Restaurant
+(RestaurantID bigint IDENTITY(1,1) PRIMARY KEY,
+RestaurantName varchar(20) NOT NULL,
+RestaurantAddress	varchar(50) NOT NULL,
+Contact	varchar(20) NOT NULL)
+
+CREATE TABLE Menu_t
+(
+MenuId bigint IDENTITY(1,1) PRIMARY KEY,
+RestaurantId bigint NOT NULL,
+ProductId bigint NOT NULL,
+)
+
+alter table Menu_t add constraint FK_RestaurantId FOREIGN KEY(RestaurantId) REFERENCES Restaurant;
+alter table Menu_t add constraint FK_MenuProductId FOREIGN KEY(ProductId) REFERENCES Products;
+
+CREATE TABLE Cart_t
+(
+CustomerId bigint NOT NULL,
+MenuId bigint NOT NULL,
+OrderId bigint NOT NULL,
+Quantity int NOT NULL,
+Price money NOT NULL,
+SubTotal AS (Quantity*Price) PERSISTED
+)
+
+alter table Cart_t add constraint FK_OrderId FOREIGN KEY(OrderId) REFERENCES OrderPlaced;
+alter table Cart_t add constraint FK_ProductId FOREIGN KEY(MenuId) REFERENCES Menu_t;
+alter table Cart_t add constraint FK_CustomerId FOREIGN KEY(CustomerId) REFERENCES Customer;
+
+create table Receipt_t
+(
+	ReceiptId bigint IDENTITY(1,1) PRIMARY KEY,
+	CustomerId bigint NOT NULL,
+	OrderId bigint NOT NULL,
+	RestaurantId bigint NOT NULL
+)
+
+alter table Receipt_t add constraint FK_OrderIdR FOREIGN KEY(OrderId) REFERENCES OrderPlaced;
+alter table Receipt_t add constraint FK_RestaurantIdR FOREIGN KEY(RestaurantId) REFERENCES Restaurant;
+alter table Receipt_t add constraint FK_CustomerIdR FOREIGN KEY(CustomerId) REFERENCES Customer;
+*/
+
+------------------------------------------------------------------------------------------FUNCTIONS---------------------------------
+/*
+Create function SumPrice (@ID int)
+Returns int
+As
+Begin
+Declare @result int;
+select @result = sum (SubTotal)
+from Cart_t where OrderId = @ID;
+return @result;
+end
+
+Create function Discounted (@Price money, @percentage int)
+Returns money
+As
+Begin
+Declare @result money;
+select @result = (@percentage * @Price) / 100
+return @Price - @result;
+end
+GO
+
+Create function SumPrice (@ID int)
+Returns int
+As
+Begin
+Declare @result int;
+select @result = sum (SubTotal)
+from Cart_t where OrderId = @ID;
+return @result;
+end
+
+Create function DiscountEverything (@Price int, @percentage int)
+Returns int
+As
+Begin
+Declare @result int;
+select @result = (@percentage * @Price) / 100
+return @Price - @result;
+end
+
+Create function IncreasePrice (@ID int, @percentage int)
+Returns int
+As
+Begin
+Declare @result int;
+Declare @price int;
+select @price = Price
+from Products where ProductId = @ID;
+select @result = (@percentage * @price) / 100
+return @price + @result;
+end
+*/
+
+------------------------------------------------------------------------------------------PROCEDURES---------------------------------
+/*
+
+Create procedure dbo.GetCart
+As
+Begin
+SET NOCOUNT ON;
+	SELECT Cart_t.OrderId, Customer.FirstName , Restaurant.RestaurantName ,Products.Item, Cart_t.SubTotal
+	FROM Cart_t
+	INNER JOIN Customer ON Cart_t.CustomerId = Customer.CustomerId
+	INNER JOIN Menu_t ON Cart_t.MenuId = Menu_t.MenuId
+	INNER JOIN Products ON Menu_t.ProductId = Products.ProductId
+	INNER JOIN Restaurant ON Menu_t.RestaurantId = Restaurant.RestaurantId
+End
+
+create procedure dbo.GetReciept
+As
+Begin
+SET NOCOUNT ON;
+	select Receipt_t.ReceiptId, Receipt_t.OrderId, 
+	dbo.GetCustomerFullName (Receipt_t.CustomerId) as Name, 
+	Customer.HomeAddress, Customer.ContactNumber, 
+	OrderPlaced.PlacedAt, OrderPlaced.PlacedOn, OrderPlaced.Total
+	from Receipt_t
+	INNER JOIN Customer ON Receipt_t.CustomerId = Customer.CustomerId
+	INNER JOIN OrderPlaced ON Receipt_t.OrderId = OrderPlaced.OrderId;
+End
+
+create procedure dbo.GetRecieptById (@ID bigint)
+As
+Begin
+SET NOCOUNT ON;
+	select Receipt_t.ReceiptId, Receipt_t.OrderId, 
+	dbo.GetCustomerFullName (Receipt_t.CustomerId) as Name, 
+	Customer.HomeAddress, Customer.ContactNumber, 
+	OrderPlaced.PlacedAt, OrderPlaced.PlacedOn, OrderPlaced.Total
+	from Receipt_t 
+	INNER JOIN Customer ON Receipt_t.CustomerId = Customer.CustomerId
+	INNER JOIN OrderPlaced ON Receipt_t.OrderId = OrderPlaced.OrderId
+	where Receipt_t.OrderId = @ID;
+End
+
+*/
+------------------------------------------------------------------------------------------TRIGGERS---------------------------------
+/*
+create trigger UpdateTotal on dbo.Cart_t
+after insert, UPDATE
+as
+begin
+	  SET NOCOUNT ON;
+	  declare @id bigint;
+	  select @id = OrderId from inserted;
+	  update OrderPlaced
+	  set Total = dbo.SumPrice(@id) where OrderId = @id;
+end
+
+create trigger Reupdate on dbo.Cart_t
+after delete
+as
+begin
+	SET NOCOUNT ON;
+	declare @Oid bigint;
+	select @Oid = OrderId from deleted;
+	--------------------------------------
+	update OrderPlaced
+	set Total = dbo.SumPrice(@Oid) where OrderId = @Oid;
+end
+
+
+
+create trigger DiscountTotal on dbo.OrderPlaced
+after INSERT, update
+as
+begin
+	SET NOCOUNT ON;
+	declare @id bigint;
+	select @id = OrderId from inserted;
+	declare @discount int;
+	select @discount = Discount from inserted;
+	declare @total money;
+	select @total = Total from inserted;
+	update OrderPlaced
+	set Total = dbo.Discounted(@total, @discount) where OrderId = @id;
+end
+*/
+
+------------------------------------------------------------------------------------TEST DATA---------------------------------------
+/*
+--FOR CUSTOMER TABLE
+INSERT INTO Customer (FirstName, LastName, HomeAddress, Email, ContactNumber) VALUES
+('Evelyn','Gilbert', '6649 N Blue Gum St New Orleans Orleans LA', 'EvelynGilbert@email.com', 5046218927),
+('Jimmy',  'Moss','4 B Blue Ridge Blvd Brighton Livingston MI',	'JimmyMoss@email.com',	8102929388),
+('Conrad', 'Alexander','8 W Cerritos Ave #54 Bridgeport Gloucester NJ','ConradAlexander@email.com',8566368749),
+('Pauline','Lambert','639 Main St Anchorage Anchorage AK','PaulineLambert@email.com',9073854412),
+('Walter', 'Murray','34 Center St Hamilton Butler OH','WalterMurray@email.com',	5135701893),
+('Gail', 	 'Oliver',	'3 Mcauley Dr Ashland Ashland OH',	'GailOliver@email.com',	4195032484),
+('Gustavo',	 'Pittman',	'7 Eads St Chicago Cook IL',	'GustavoPittman@email.com',	7735736914),
+('Corey',	 'Ortiz',	'7 W Jackson Blvd San Jose Santa Clara CA',	'CoreyOrtiz@email.com',	4087523500),
+('Jackie',	 'Matthews','5 Boston Ave #88 Sioux Falls Minnehaha SD',	'JackieMatthews@email.com',	6054142147),
+('Jaime',	 'Sherman',	'228 Runamuck Pl #2808 Baltimore Baltimore City MD',	'JaimeSherman@email.com',	4106558723),
+('Shannon',	 'Boyd',	'2371 Jerrold Ave Kulpsville Montgomery PA',	'ShannonBoyd@email.com',	2158741229),
+('Jordan',	'Joseph',	'37275 St  Rt 17m M Middle Island Suffolk NY',	'JordanJoseph@email.com',	6313353414),
+(	'Terry',	'Underwood',	'25 E 75th St #69 Los Angeles Los Angeles CA',	'TerryUnderwood@email.com',	3104985651),
+(	'Audrey',	'Lewis',	'98 Connecticut Ave Nw Chagrin Falls Geauga OH',	'AudreyLewis@email.com',	4407808425),
+(	' Joey',	'Leonard',	'56 E Morehead St Laredo Webb TX',	' JoeyLeonard@email.com',	9565376195),
+(	'Chester',	'Benson',	'73 State Road 434 E Phoenix Maricopa AZ',	'ChesterBenson@email.com',	6022774385),
+(	'Iris',	'Garner',	'69734 E Carrillo St Mc Minnville Warren TN',	'IrisGarner@email.com',	9313139635),
+(	'Micheal',	'May',	'322 New Horizon Blvd Milwaukee Milwaukee WI',	'MichealMay@email.com',	4146619598),
+(	'Ebony',	'Harrington',	'1 State Route 27 Taylor Wayne MI',	'EbonyHarrington@email.com',	3132887937),
+(	'Dan',	'Blair',	'394 Manchester Blvd Rockford Winnebago IL',	'DanBlair@email.com',	8158282147),
+(	'Tina',	'Curry',	'6 S 33rd St Aston Delaware PA',	'TinaCurry@email.com',	6105453615),
+(	'Brian',	'Schneider',	'6 Greenleaf Ave San Jose Santa Clara CA',	'BrianSchneider@email.com',	4085401785),
+(	'Brooke',	'Parker',	'618 W Yakima Ave Irving Dallas TX',	'BrookeParker@email.com',	9723039197),
+(	'Merle',	'Scott',	'74 S Westgate St Albany Albany NY',	'MerleScott@email.com',	5189667987),
+(	'Linda',	'Cunningham',	'3273 State St Middlesex Middlesex NJ',	'LindaCunningham@email.com',	7326583154),
+(	'May' ,	'Cox',	'1 Central Ave Stevens Point Portage', 'WI	MayCox@email.com',	7156626764),
+(	'Leslie',	'Harrison',	'86 Nw 66th St #8673 Shawnee Johnson KS',	'LeslieHarrison@email.com',	9133882079),
+(	'Ira',	'Wells',	'2 Cedar Ave #84 Easton Talbot MD',	'IraWells@email.com',	4106691642),
+(	'Juana',	'Soto',	'90991 Thorburn Ave New York New York NY',	'JuanaSoto@email.com',	2125824976),
+(	'Marta',	'Willis',	'386 9th Ave N Conroe Montgomery TX',	'MartaWillis@email.com',	9363363951),
+(	'Amanda',	'Carson',	'74874 Atlantic Ave Columbus Franklin OH',	'AmandaCarson@email.com',	6148019788),
+(	'Rachel',	'Munoz',	'366 South Dr Las Cruces Dona Ana NM',	'RachelMunoz@email.com',	5059773911),
+(	'Louis',	'Mason',	'45 E Liberty St Ridgefield Park Bergen NJ',	'LouisMason@email.com',	2017096245),
+(	'Leo',	'Tran',	'4 Ralph Ct Dunellen Middlesex NJ',	'LeoTran@email.com',	7329247882),
+(	'Levi',	'Hill',	'2742 Distribution Way New York New York NY',	'LeviHill@email.com',	2128601579),
+(	'Dora',	'Green',	'426 Wolf St Metairie Jefferson LA',	'DoraGreen@email.com',	5049799175),
+(	'Orlando',	'Tucker',	'128 Bransten Rd New York New York NY',	'OrlandoTucker@email.com',	2126758570),
+(	'Dwight',	'Gomez',	'17 Morena Blvd Camarillo Ventura CA',	'DwightGomez@email.com',	8058326163),
+(	'Samuel',	'Wright',	'775 W 17th St San Antonio Bexar TX',	'SamuelWright@email.com',	2108129597),
+(	'Delbert',	'Hammond',	'6980 Dorsett Rd Abilene Dickinson KS',	'DelbertHammond@email.com',	7854637829),
+(	'Fred',	'Miles',	'2881 Lewis Rd Prineville Crook OR',	'FredMiles@email.com',	5415488197),
+(	'Jimmy',	'Jimenez',	'7219 Woodfield Rd Overland Park Johnson KS',	'JimmyJimenez@email.com',	9134134604),
+(	'Luis',	'Cobb',	'1048 Main St Fairbanks Fairbanks North Star AK',	'LuisCobb@email.com',	9072314722),
+(	'Erin',	'Bradley',	'678 3rd Ave Miami Miami Dade FL',	'ErinBradley@email.com',	3056067291),
+(	'Debra',	'Arnold',	'20 S Babcock St Fairbanks Fairbanks North Star AK',	'DebraArnold@email.com',	9077411044),
+(	'Jared',	'Howard',	'2 Lighthouse Ave Hopkins Hennepin MN',	'JaredHoward@email.com',	9527682416),
+(	'Jeanne',	'Shaw',	'38938 Park Blvd Boston Suffolk MA',	'JeanneShaw@email.com',	6173995124),
+(	'Norman',	'Fuller',	'5 Tomahawk Dr Los Angeles Los Angeles CA',	'NormanFuller@email.com',	3234532780),
+(	'Gayle',	'Pearson',	'762 S Main St Madison Dane WI',	'GaylePearson@email.com',	6083367444),
+(	'Rene',	'Valdez',	'209 Decker Dr Philadelphia Philadelphia PA',	'ReneValdez@email.com',	2159079111)
+
+--FOR PRODUCT TABLE
+  INSERT INTO Products (Item, Price) VALUES 
+('calzone',	300),
+('garlic bread',	150),
+(	'pizza',	1200),
+(	'lasangna',	300),
+(	'zinger burger',	400),
+(	'beef burger',	400),
+('french fries',	250),
+(	'fried chicken',350),
+(	'sandwich',	300),
+('waffles',	400),
+('chicken roll',	150),
+('fried chicken',400),
+('french fries',	200),
+('tacos',	150),
+('salads',200),
+('hot dogs',	150),
+('french fries',	150),
+( 'calzone',	350),
+('ice cream',	230),
+('crazy shakes',	280),
+('cake',	1500)
+
+--FOR RESTAURANT TABLE
+INSERT INTO Restaurant (RestaurantName, RestaurantAddress, Contact)VALUES
+('Pizzeria',	'32860 Sierra Rd Miami Miami Dade FL',	'3053046573'),
+('Dessert Factory',	'555 Main St Erie Erie PA',	'8142992877'),
+('Burgeria',	'2 Se 3rd Ave Mesquite Dallas TX',	'9727424000'),
+('Snack Shack',	'2239 Shawnee Mission Pky Tullahoma Coffee TN',	'9317391551'),
+('sandwich station',	'2726 Charcot Ave Paterson Passaic NJ',	'9732844048')
+
+--FOR MENU TABLE
+insert into Menu_t values
+(1, 1), (1, 2), (1, 3), (1, 4), (3, 5), (3, 6), (3, 7), (3, 8), (4, 9), (4, 10), (4, 11), (4, 12), (4, 13), (4, 14), (4, 15), (4, 16), (5, 9), (5, 11), (5, 16), (5, 17), (5, 18), (2, 19), (2, 20), (2, 21);
+
+--delete from Cart_t
+--delete from OrderPlaced
+--DBCC CHECKIDENT('OrderPlaced', RESEED, 0)
+
+--FOR OrderPlaced TABLE
+INSERT INTO OrderPlaced (PlacedAt, PlacedOn, Discount) VALUES
+('13:04' , '01-01-2020' , 10),
+('13:10' , '01-01-2020' , 15),
+('13:50' , '01-01-2020' , 0),
+('14:03' , '01-01-2020' , 0),
+('14:10' , '01-01-2020' , 20),
+('14:20' , '01-01-2020' , 0),
+('14:30' , '01-01-2020' , 5),
+('15:25' , '01-01-2020' , 10),
+('15:34' , '01-01-2020' , 0),
+('15:40' , '01-01-2020' , 0),
+('15:50' , '01-01-2020' , 0),
+('16:07' , '01-01-2020' , 0),
+('16:10' , '01-01-2020' , 0),
+('16:58' , '01-01-2020' , 0),
+('17:40' , '01-01-2020' , 0),
+('18:22' , '01-01-2020' , 0),
+('19:04' , '01-01-2020' , 0),
+('19:46' , '01-01-2020' , 10),
+('20:28' , '01-01-2020' , 10),
+('21:10' , '01-01-2020' , 50),
+('22:10' , '01-01-2020' , 0),
+('23:10' , '01-01-2020' , 15),
+('13:50' , '02-01-2020' , 0),
+('14:03' , '02-01-2020' , 0),
+('14:10' , '02-01-2020' , 0),
+('14:20' , '02-01-2020' , 0),
+('15:09' , '02-01-2020' , 40),
+('15:13' , '02-01-2020' , 0),
+('16:04' , '02-01-2020' , 0),
+('16:55' , '02-01-2020' , 30),
+('18:44' , '02-01-2020' , 0),
+('19:20' , '02-01-2020' , 0),
+('20:20' , '02-01-2020' , 15),
+('21:09' , '02-01-2020' , 0),
+('23:13' , '02-01-2020' , 10),
+('23:44' , '02-01-2020' , 0),
+('13:08' , '03-01-2020' , 0),
+('13:10' , '03-01-2020' , 30),
+('13:28' , '03-01-2020' , 20),
+('14:03' , '03-01-2020' , 0),
+('14:17' , '03-01-2020' , 10),
+('14:41' , '03-01-2020' , 0),
+('14:50' , '03-01-2020' , 0),
+('15:34' , '03-01-2020' , 10),
+('15:40' , '03-01-2020' , 0),
+('15:50' , '03-01-2020' , 0),
+('16:07' , '03-01-2020' , 25),
+('16:58' , '03-01-2020' , 15),
+('17:40' , '03-01-2020' , 0),
+('18:22' , '03-01-2020' , 0),
+('19:04' , '03-01-2020' , 20),
+('19:46' , '03-01-2020' , 0),
+('20:28' , '03-01-2020' , 0),
+('21:10' , '03-01-2020' , 10),
+('22:10' , '03-01-2020' , 0),
+('23:10' , '03-01-2020' , 0)
+
+--FOR Cart_t TABLE
+insert into Cart_t values
+(1 , 1, 1, 1, 300 ),
+(1 , 2, 1, 2, 150 ),
+(1 , 3, 1, 4, 1200 )
+insert into Cart_t values
+(2 , 5, 2, 2, 400 ),
+(2 , 6, 2, 1, 400 ),
+(2 , 7, 2, 2, 250 ),
+(2 , 8, 2, 3, 350 )
+insert into Cart_t values
+(3 , 5, 3, 1, 400 ),
+(3 , 6, 3, 4, 400 ),
+(3 , 7, 3, 2, 250 ),
+(3 , 8, 3, 1, 350 )
+insert into Cart_t values
+(4 , 10, 4, 5, 400 ),
+(4 , 11, 4, 2, 150 ),
+(4 , 12, 4, 3, 400 ),
+(4 , 13, 4, 4, 200 ),
+(4 , 14, 4, 2, 150 )
+insert into Cart_t values
+(5 , 22, 5, 4, 230 ),
+(5 , 23, 5, 2, 280 ),
+(5 , 24, 5, 1, 1500 )
+insert into Cart_t values
+(6 , 11, 6, 2, 150 ),
+(6 , 12, 6, 3, 400 ),
+(6 , 13, 6, 1, 200 ),
+(6 , 14, 6, 4, 150 ),
+(6 , 15, 6, 2, 200 ),
+(6 , 16, 6, 1, 150 )
+insert into Cart_t values
+(7 , 17, 7, 5, 300 ),
+(7 , 18, 7, 2, 150 ),
+(7 , 19, 7, 2, 150 )
+insert into Cart_t values
+(8 , 22, 8, 3, 230 ),
+(8 , 23, 8, 1, 280 ),
+(8 , 24, 8, 4, 1500 )
+insert into Cart_t values
+(9 , 1, 9, 2, 300 ),
+(9 , 2, 9, 1, 150 ),
+(9 , 3, 9, 5, 1200 ),
+(9 , 4, 9, 2, 300 )
+insert into Cart_t values
+(10 , 1, 10, 3, 300 ),
+(10 , 2, 10, 4, 150 ),
+(10 , 3, 10, 2, 1200 ),
+(10 , 4, 10, 4, 300 )
+insert into Cart_t values
+(11 , 11, 11, 2, 150 ),
+(11 , 12, 11, 1, 400 ),
+(11 , 13, 11, 2, 200 ),
+(11 , 14, 11, 2, 150 ),
+(11 , 16, 11, 4, 150 )
+insert into Cart_t values
+(12 , 9, 12, 2, 300 ),
+(12 , 10, 12, 1, 400 ),
+(12 , 11, 12, 2, 150 ),
+(12 , 12, 12, 3, 400 ),
+(12 , 13, 12, 1, 200 )
+insert into Cart_t values
+(13 , 14, 13, 4, 150 ),
+(13 , 15, 13, 2, 200 ),
+(13 , 16, 13, 1, 150 )
+insert into Cart_t values
+(14 , 9, 14, 5, 300 ),
+(14 , 10, 14, 2, 400 ),
+(14 , 11, 14, 2, 150 ),
+(14 , 12, 14, 3, 400 ),
+(14 , 13, 14, 1, 200 )
+insert into Cart_t values
+(15 , 14, 15, 4, 150 ),
+(15 , 15, 15, 2, 200 ),
+(15 , 16, 15, 1, 150 )
+insert into Cart_t values
+(16 , 11, 16, 5, 150 ),
+(16 , 12, 16, 2, 400 ),
+(16 , 13, 16, 2, 200 ),
+(16 , 14, 16, 3, 150 ),
+(16 , 15, 16, 1, 200 )
+insert into Cart_t values
+(17 , 22, 17, 4, 230 ),
+(17 , 23, 17, 3, 280 ),
+(17 , 24, 17, 1, 1500 )
+insert into Cart_t values
+(18 , 5, 18, 4, 400 ),
+(18 , 6, 18, 2, 400 ),
+(18 , 7, 18, 1, 250 ),
+(18 , 8, 18, 5, 350 )
+insert into Cart_t values
+(19 , 5, 19, 2, 400 ),
+(19 , 6, 19, 3, 400 ),
+(19 , 7, 19, 4, 250 ),
+(19 , 8, 19, 2, 350 )
+insert into Cart_t values
+(20 , 9, 20, 4, 300 ),
+(20 , 11, 20, 2, 150 ),
+(20 , 13, 20, 1, 200 ),
+(20 , 16, 20, 2, 150 )
+insert into Cart_t values
+(21 , 17, 21, 2, 300 ),
+(21 , 18, 21, 4, 150 ),
+(21 , 19, 21, 2, 150 ),
+(21 , 20, 21, 1, 150 )
+insert into Cart_t values
+(22 , 5, 22, 2, 400 ),
+(22 , 6, 22, 3, 400 ),
+(22 , 7, 22, 1, 250 ),
+(22 , 8, 22, 4, 350 )
+insert into Cart_t values
+(23 , 1, 23, 2, 300 ),
+(23 , 2, 23, 1, 150 ),
+(23 , 3, 23, 5, 1200 ),
+(23 , 4, 23, 2, 300 )
+insert into Cart_t values
+(24 , 11, 24, 2, 150 ),
+(24 , 12, 24, 3, 400 ),
+(24 , 13, 24, 1, 200 ),
+(24 , 14, 24, 4, 150 ),
+(24 , 16, 24, 2, 150 ),
+(24 , 15, 24, 1, 200 )
+insert into Cart_t values
+(25 , 2, 25, 5, 150 ),
+(25 , 3, 25, 2, 1200 )
+insert into Cart_t values
+(26 , 5, 26, 3, 400 ),
+(26 , 6, 26, 1, 400 ),
+(26 , 7, 26, 4, 250 ),
+(26 , 8, 26, 2, 350 )
+insert into Cart_t values
+(27 , 17, 27, 1, 300 ),
+(27 , 18, 27, 5, 150 ),
+(27 , 19, 27, 2, 150 ),
+(27 , 20, 27, 3, 150 )
+insert into Cart_t values
+(28 , 11, 28, 4, 150 ),
+(28 , 12, 28, 2, 400 ),
+(28 , 13, 28, 4, 200 ),
+(28 , 14, 28, 2, 150 ),
+(28 , 15, 28, 1, 200 )
+insert into Cart_t values
+(29 , 22, 29, 2, 230 ),
+(29 , 23, 29, 2, 280 ),
+(29 , 24, 29, 4, 1500 )
+insert into Cart_t values
+(30 , 1, 30, 2, 300 ),
+(30 , 2, 30, 1, 150 ),
+(30 , 3, 30, 2, 1200 ),
+(30 , 4, 30, 3, 300 )
+insert into Cart_t values
+(31 , 17, 31, 1, 300 ),
+(31 , 18, 31, 4, 150 ),
+(31 , 19, 31, 2, 150 ),
+(31 , 20, 31, 1, 150 ),
+(31 , 21, 31, 5, 350 )
+insert into Cart_t values
+(32 , 5, 32, 2, 400 ),
+(32 , 6, 32, 2, 400 ),
+(32 , 7, 32, 3, 250 )
+insert into Cart_t values
+(33 , 5, 33, 1, 400 ),
+(33 , 6, 33, 4, 400 ),
+(33 , 7, 33, 2, 250 ),
+(33 , 8, 33, 1, 350 )
+insert into Cart_t values
+(34 , 1, 34, 5, 300 ),
+(34 , 2, 34, 2, 150 ),
+(34 , 3, 34, 3, 1200 ),
+(34 , 4, 34, 1, 300 )
+insert into Cart_t values
+(35 , 17, 35, 4, 300 ),
+(35 , 18, 35, 2, 150 ),
+(35 , 19, 35, 1, 150 ),
+(35 , 20, 35, 5, 150 ),
+(35 , 21, 35, 2, 350 )
+insert into Cart_t values
+(36 , 9, 36, 3, 300 ),
+(36 , 10, 36, 4, 400 ),
+(36 , 11, 36, 2, 150 )
+insert into Cart_t values
+(37 , 12, 37, 4, 400 ),
+(37 , 13, 37, 2, 200 ),
+(37 , 14, 37, 1, 150 ),
+(37 , 15, 37, 2, 200 )
+insert into Cart_t values
+(38 , 10, 38, 2, 400 ),
+(38 , 12, 38, 4, 400 ),
+(38 , 13, 38, 2, 200 ),
+(38 , 14, 38, 1, 150 )
+insert into Cart_t values
+(39 , 10, 39, 2, 400 ),
+(39 , 12, 39, 3, 400 ),
+(39 , 13, 39, 1, 200 ),
+(39 , 14, 39, 4, 150 )
+insert into Cart_t values
+(40 , 1, 40, 2, 300 ),
+(40 , 2, 40, 1, 150 ),
+(40 , 3, 40, 5, 1200 ),
+(40 , 4, 40, 2, 300 )
+insert into Cart_t values
+(41 , 10, 41, 2, 400 ),
+(41 , 12, 41, 3, 400 ),
+(41 , 13, 41, 1, 200 ),
+(41 , 14, 41, 4, 150 )
+insert into Cart_t values
+(42 , 1, 42, 2, 300 ),
+(42 , 2, 42, 1, 150 ),
+(42 , 3, 42, 5, 1200 ),
+(42 , 4, 42, 2, 300 )
+insert into Cart_t values
+(43 , 10, 43, 3, 400 ),
+(43 , 12, 43, 1, 400 ),
+(43 , 13, 43, 4, 200 ),
+(43 , 14, 43, 2, 150 )
+insert into Cart_t values
+(44 , 1, 44, 1, 300 ),
+(44 , 2, 44, 5, 150 ),
+(44 , 3, 44, 2, 1200 ),
+(44 , 4, 44, 3, 300 )
+insert into Cart_t values
+(45 , 17, 45, 4, 300 ),
+(45 , 18, 45, 2, 150 ),
+(45 , 19, 45, 4, 150 ),
+(45 , 20, 45, 2, 150 )
+insert into Cart_t values
+(46 , 21, 46, 1, 350 ),
+(46 , 18, 46, 2, 150 ),
+(46 , 19, 46, 2, 150 ),
+(46 , 20, 46, 4, 150 )
+insert into Cart_t values
+(47 , 1, 47, 2, 300 ),
+(47 , 2, 47, 1, 150 ),
+(47 , 3, 47, 2, 1200 ),
+(47 , 4, 47, 3, 300 )
+insert into Cart_t values
+(48 , 5, 48, 1, 400 ),
+(48 , 6, 48, 4, 400 ),
+(48 , 7, 48, 2, 250 ),
+(48 , 8, 48, 1, 350 )
+insert into Cart_t values
+(49 , 5, 49, 5, 400 ),
+(49 , 6, 49, 2, 400 ),
+(49 , 7, 49, 2, 250 ),
+(49 , 8, 49, 3, 350 )
+insert into Cart_t values
+(50 , 1, 50, 1, 300 ),
+(50 , 2, 50, 4, 150 ),
+(50 , 3, 50, 2, 1200 ),
+(50 , 4, 50, 1, 300 )
+insert into Cart_t values
+(1 , 10, 51, 2, 400 ),
+(1 , 12, 51, 4, 400 ),
+(1 , 13, 51, 2, 200 ),
+(1 , 14, 51, 1, 150 )
+*/
